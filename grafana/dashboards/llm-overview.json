@@ -1,0 +1,448 @@
+{
+  "title": "LLM Observatory",
+  "uid": "llm-observatory",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "type": "query",
+        "label": "Provider",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(llm_requests_total, provider)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "value": "$__all", "text": "All" }
+      },
+      {
+        "name": "model",
+        "type": "query",
+        "label": "Model",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(llm_requests_total{provider=~\"$provider\"}, model)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "value": "$__all", "text": "All" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Summary",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Requests",
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(llm_requests_total{provider=~\"$provider\", model=~\"$model\"})",
+          "legendFormat": "Total"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total Cost (USD)",
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 6,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(llm_cost_dollars_total{provider=~\"$provider\", model=~\"$model\"})",
+          "legendFormat": "Cost"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Active Requests",
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(llm_active_requests{provider=~\"$provider\", model=~\"$model\"})",
+          "legendFormat": "Active"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Error Rate",
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(llm_errors_total{provider=~\"$provider\", model=~\"$model\"}[5m])) / sum(rate(llm_requests_total{provider=~\"$provider\", model=~\"$model\"}[5m]))",
+          "legendFormat": "Error Rate"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Total Tokens",
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "purple", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(llm_tokens_total{provider=~\"$provider\", model=~\"$model\"})",
+          "legendFormat": "Tokens"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Cost / Hour",
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(llm_cost_dollars_total{provider=~\"$provider\", model=~\"$model\"}[5m])) * 3600",
+          "legendFormat": "$/hr"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Request Metrics",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Request Rate (req/s)",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (provider, model) (rate(llm_requests_total{provider=~\"$provider\", model=~\"$model\"}[5m]))",
+          "legendFormat": "{{provider}} / {{model}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Request Status Breakdown",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "errors" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(llm_requests_total{provider=~\"$provider\", model=~\"$model\"}[5m]))",
+          "legendFormat": "HTTP {{status}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(llm_errors_total{provider=~\"$provider\", model=~\"$model\"}[5m]))",
+          "legendFormat": "Errors",
+          "refId": "errors"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Latency",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Latency Percentiles (p50 / p95 / p99)",
+      "gridPos": { "x": 0, "y": 15, "w": 16, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 5 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, model) (rate(llm_request_duration_seconds_bucket{provider=~\"$provider\", model=~\"$model\"}[5m])))",
+          "legendFormat": "p50 {{model}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, model) (rate(llm_request_duration_seconds_bucket{provider=~\"$provider\", model=~\"$model\"}[5m])))",
+          "legendFormat": "p95 {{model}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, model) (rate(llm_request_duration_seconds_bucket{provider=~\"$provider\", model=~\"$model\"}[5m])))",
+          "legendFormat": "p99 {{model}}"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "histogram",
+      "title": "Latency Distribution",
+      "gridPos": { "x": 16, "y": 15, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(llm_request_duration_seconds_bucket{provider=~\"$provider\", model=~\"$model\"}[5m]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Tokens & Cost",
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Token Usage Rate (tokens/s)",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (model, type) (rate(llm_tokens_total{provider=~\"$provider\", model=~\"$model\"}[5m]))",
+          "legendFormat": "{{model}} – {{type}}"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Cumulative Cost by Model (USD)",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 6,
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (provider, model) (llm_cost_dollars_total{provider=~\"$provider\", model=~\"$model\"})",
+          "legendFormat": "{{provider}} / {{model}}"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "piechart",
+      "title": "Cost Share by Model",
+      "gridPos": { "x": 0, "y": 32, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        }
+      },
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } },
+      "targets": [
+        {
+          "expr": "sum by (model) (llm_cost_dollars_total{provider=~\"$provider\", model=~\"$model\"})",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "piechart",
+      "title": "Token Share (Input vs Output)",
+      "gridPos": { "x": 8, "y": 32, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } },
+      "targets": [
+        {
+          "expr": "sum by (type) (llm_tokens_total{provider=~\"$provider\", model=~\"$model\"})",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "Cost & Usage by Model",
+      "gridPos": { "x": 16, "y": 32, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Cost (USD)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 6 }
+            ]
+          }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "Cost (USD)", "desc": true }] },
+      "targets": [
+        {
+          "expr": "sum by (model) (llm_cost_dollars_total)",
+          "legendFormat": "{{model}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        { "id": "labelsToFields", "options": {} },
+        { "id": "organize", "options": { "renameByName": { "Value": "Cost (USD)", "model": "Model" } } }
+      ]
+    }
+  ]
+}
