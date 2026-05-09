@@ -2,6 +2,7 @@ package tracing
 
 import (
 	"context"
+	"net/url"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -14,8 +15,15 @@ import (
 func Init(endpoint string) (func(), error) {
 	ctx := context.Background()
 
+	// WithEndpoint wants host:port only; parse it out of the full URL.
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	host := u.Host
+
 	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint(endpoint),
+		otlptracehttp.WithEndpoint(host),
 		otlptracehttp.WithInsecure(),
 	)
 	if err != nil {

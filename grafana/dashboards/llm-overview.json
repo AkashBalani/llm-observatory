@@ -11,7 +11,7 @@
         "name": "provider",
         "type": "query",
         "label": "Provider",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
         "query": "label_values(llm_requests_total, provider)",
         "multi": true,
         "includeAll": true,
@@ -21,7 +21,7 @@
         "name": "model",
         "type": "query",
         "label": "Model",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
         "query": "label_values(llm_requests_total{provider=~\"$provider\"}, model)",
         "multi": true,
         "includeAll": true,
@@ -42,7 +42,7 @@
       "type": "stat",
       "title": "Total Requests",
       "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -71,7 +71,7 @@
       "type": "stat",
       "title": "Total Cost (USD)",
       "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -103,7 +103,7 @@
       "type": "stat",
       "title": "Active Requests",
       "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -133,7 +133,7 @@
       "type": "stat",
       "title": "Error Rate",
       "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -164,7 +164,7 @@
       "type": "stat",
       "title": "Total Tokens",
       "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -193,7 +193,7 @@
       "type": "stat",
       "title": "Cost / Hour",
       "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
@@ -232,7 +232,7 @@
       "type": "timeseries",
       "title": "Request Rate (req/s)",
       "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
@@ -252,7 +252,7 @@
       "type": "timeseries",
       "title": "Request Status Breakdown",
       "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
@@ -290,7 +290,7 @@
       "type": "timeseries",
       "title": "Latency Percentiles (p50 / p95 / p99)",
       "gridPos": { "x": 0, "y": 15, "w": 16, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -318,7 +318,7 @@
       "type": "histogram",
       "title": "Latency Distribution",
       "gridPos": { "x": 16, "y": 15, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "unit": "s" }
       },
@@ -342,7 +342,7 @@
       "type": "timeseries",
       "title": "Token Usage Rate (tokens/s)",
       "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -362,7 +362,7 @@
       "type": "timeseries",
       "title": "Cumulative Cost by Model (USD)",
       "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "currencyUSD",
@@ -383,7 +383,7 @@
       "type": "piechart",
       "title": "Cost Share by Model",
       "gridPos": { "x": 0, "y": 32, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "currencyUSD",
@@ -403,7 +403,7 @@
       "type": "piechart",
       "title": "Token Share (Input vs Output)",
       "gridPos": { "x": 8, "y": 32, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } },
       "targets": [
         {
@@ -417,7 +417,7 @@
       "type": "table",
       "title": "Cost & Usage by Model",
       "gridPos": { "x": 16, "y": 32, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto" } },
         "overrides": [
