@@ -11,6 +11,21 @@ Format: **What changed → Why → What we expect from it.**
 
 ## 2026-05-09
 
+### Add Loki structured logging — `(pending)`
+
+**What changed:**  
+Added `internal/logger` package — a `Client` that writes structured JSON to stdout and asynchronously ships log entries to Loki's push API (`/loki/api/v1/push`). Entries are batched in a background goroutine and flushed every second or when 100 entries accumulate. Each entry carries labels (`service`, `provider`, `model`, `level`) so Grafana/Loki can filter by any dimension. The proxy handler now calls `log.Info` / `log.Error` instead of `log.Printf`, and `main.go` initialises the logger with the Loki URL from config. `LOKI_URL` added to config (default: `http://loki:3100`). Also updated `DECISIONS.md` with DD-008 (direct push over Promtail scraping) and DD-009 (staying on Go 1.20).
+
+**Why:**  
+Loki was running in the stack but receiving nothing. Metrics and traces answer "how many" and "how long" — logs answer "what exactly happened on this request". Structured labels make it possible to filter by model or provider in Grafana's Explore view without parsing text. Direct push was chosen over Promtail scraping because it avoids Docker socket mounting and regex pipeline config, and gives us clean label control from the application.
+
+**Expected outcome:**  
+Every completed request produces a JSON log line on stdout and a queryable entry in Loki labelled by provider and model. In Grafana → Explore → Loki, querying `{service="llm-observatory", provider="anthropic"}` returns a live feed of request logs with cost, duration, and token counts.
+
+---
+
+## 2026-05-09
+
 ### Add streaming support and README — `6fa2187`
 
 **What changed:**  

@@ -99,6 +99,39 @@ Major architectural and technical decisions made during the project. Updated whe
 
 ---
 
+## DD-008 — Direct Loki push over Promtail scraping
+
+**Date:** 2026-05-09  
+**Status:** Active
+
+**Decision:** Push logs directly to Loki's HTTP API from the Go proxy rather than relying on Promtail to scrape container logs.
+
+**Reasoning:**
+- Promtail's default config scrapes `/var/log` — not Docker container stdout. Getting it to scrape Docker logs requires mounting the Docker socket or `/var/lib/docker/containers` and configuring pipeline stages, which adds operational complexity.
+- Direct push gives full control over labels (`provider`, `model`, `level`, `service`) without regex parsing.
+- Logs are structured JSON from the start; no pipeline parsing needed in Loki.
+- The push client is a small background goroutine that batches entries and flushes every second — zero impact on request latency.
+
+**Trade-offs:** Loki client code lives in the application rather than in infrastructure config. If Loki is down, log entries are dropped (the channel overflows and the goroutine logs to stderr). Acceptable for this project scope.
+
+---
+
+## DD-009 — Stay on Go 1.20 rather than upgrading for log/slog
+
+**Date:** 2026-05-09  
+**Status:** Active
+
+**Decision:** Implement a custom minimal JSON logger rather than upgrading to Go 1.21+ to use the standard `log/slog` package.
+
+**Reasoning:**
+- Local toolchain is Go 1.20. Upgrading just for slog adds friction with no functional benefit for this project.
+- The custom logger is ~150 lines and does exactly what we need: JSON stdout + Loki push with batching.
+- When the toolchain is naturally upgraded, migrating to slog is a drop-in refactor.
+
+**Trade-offs:** One more file to maintain. Accepted — the code is self-contained and straightforward.
+
+---
+
 ## DD-007 — Grafana provisioning via config files, not UI
 
 **Date:** 2026-05-08  

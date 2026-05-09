@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/AkashBalani/llm-observatory/internal/cost"
+	"github.com/AkashBalani/llm-observatory/internal/logger"
 	"github.com/AkashBalani/llm-observatory/internal/metrics"
 )
 
@@ -27,10 +27,11 @@ type Handler struct {
 	provider   string
 	targetBase string
 	stripPath  string
+	log        *logger.Client
 }
 
-func newHandler(provider, targetBase, stripPath string) *Handler {
-	return &Handler{provider: provider, targetBase: targetBase, stripPath: stripPath}
+func newHandler(provider, targetBase, stripPath string, log *logger.Client) *Handler {
+	return &Handler{provider: provider, targetBase: targetBase, stripPath: stripPath, log: log}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -184,8 +185,28 @@ func (h *Handler) recordUsage(model string, inputTokens, outputTokens int, durat
 		attribute.Int("http.status_code", statusCode),
 	)
 
-	log.Printf("provider=%s model=%s status=%d duration=%.2fs input_tokens=%d output_tokens=%d cost=$%.6f",
-		h.provider, model, statusCode, duration, inputTokens, outputTokens, estimatedCost)
+	level := "info"
+	if statusCode >= 400 {
+		level = "error"
+	}
+
+	labels := map[string]string{
+		"provider": h.provider,
+		"model":    model,
+	}
+	fields := map[string]any{
+		"status":        statusCode,
+		"duration_s":    fmt.Sprintf("%.3f", duration),
+		"input_tokens":  inputTokens,
+		"output_tokens": outputTokens,
+		"cost_usd":      fmt.Sprintf("%.6f", estimatedCost),
+	}
+
+	if level == "error" {
+		h.log.Error("request completed", labels, fields)
+	} else {
+		h.log.Info("request completed", labels, fields)
+	}
 }
 
 func isStreaming(body []byte) bool {

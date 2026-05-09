@@ -7,12 +7,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/AkashBalani/llm-observatory/internal/config"
+	"github.com/AkashBalani/llm-observatory/internal/logger"
 	"github.com/AkashBalani/llm-observatory/internal/proxy"
 	"github.com/AkashBalani/llm-observatory/internal/tracing"
 )
 
 func main() {
 	cfg := config.Load()
+
+	appLog := logger.New(cfg.LokiURL)
+	defer appLog.Shutdown()
 
 	shutdown, err := tracing.Init(cfg.JaegerEndpoint)
 	if err != nil {
@@ -22,8 +26,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	mux.Handle("/anthropic/", proxy.NewAnthropicProxy(cfg))
-	mux.Handle("/openai/", proxy.NewOpenAIProxy(cfg))
+	mux.Handle("/anthropic/", proxy.NewAnthropicProxy(cfg, appLog))
+	mux.Handle("/openai/", proxy.NewOpenAIProxy(cfg, appLog))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
