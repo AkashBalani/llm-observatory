@@ -11,7 +11,7 @@ Format: **What changed → Why → What we expect from it.**
 
 ## 2026-05-09
 
-### Add Loki structured logging — `(pending)`
+### Add Loki structured logging — `9faee5f`
 
 **What changed:**  
 Added `internal/logger` package — a `Client` that writes structured JSON to stdout and asynchronously ships log entries to Loki's push API (`/loki/api/v1/push`). Entries are batched in a background goroutine and flushed every second or when 100 entries accumulate. Each entry carries labels (`service`, `provider`, `model`, `level`) so Grafana/Loki can filter by any dimension. The proxy handler now calls `log.Info` / `log.Error` instead of `log.Printf`, and `main.go` initialises the logger with the Loki URL from config. `LOKI_URL` added to config (default: `http://loki:3100`). Also updated `DECISIONS.md` with DD-008 (direct push over Promtail scraping) and DD-009 (staying on Go 1.20).
