@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -8,11 +9,13 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/AkashBalani/llm-observatory/internal/cost"
 	"github.com/AkashBalani/llm-observatory/internal/metrics"
@@ -31,7 +34,6 @@ func newHandler(provider, targetBase, stripPath string) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Read and buffer the request body so we can forward it
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read request body", http.StatusBadRequest)
@@ -39,10 +41,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body.Close()
 
-	// Extract model from request body for labeling
 	model := extractModel(bodyBytes)
 	if model == "" {
 		model = "unknown"
+	}
+
+	streaming := isStreaming(bodyBytes)
+
+	// OpenAI doesn't include usage in streaming by default; inject the option.
+	if streaming && h.provider == "openai" {
+		bodyBytes = injectOpenAIStreamOptions(bodyBytes)
 	}
 
 	ctx, span := tracer.Start(r.Context(), fmt.Sprintf("%s/%s", h.provider, model))
@@ -58,7 +66,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.ActiveRequests.WithLabelValues(h.provider, model).Inc()
 	defer metrics.ActiveRequests.WithLabelValues(h.provider, model).Dec()
 
-	// Build upstream request
 	upstreamPath := r.URL.Path
 	if h.stripPath != "" {
 		upstreamPath = upstreamPath[len(h.stripPath):]
@@ -75,7 +82,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Forward headers (auth, content-type, etc.)
 	for k, vals := range r.Header {
 		for _, v := range vals {
 			upstreamReq.Header.Add(k, v)
@@ -84,8 +90,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 	resp, err := http.DefaultClient.Do(upstreamReq)
-	duration := time.Since(start).Seconds()
-
 	if err != nil {
 		metrics.ErrorsTotal.WithLabelValues(h.provider, model, "upstream_request").Inc()
 		span.RecordError(err)
@@ -95,55 +99,177 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Buffer response body to parse tokens before forwarding
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		metrics.ErrorsTotal.WithLabelValues(h.provider, model, "response_read").Inc()
-		http.Error(w, "failed to read upstream response", http.StatusBadGateway)
-		return
-	}
-
-	statusLabel := strconv.Itoa(resp.StatusCode)
-	metrics.RequestTotal.WithLabelValues(h.provider, model, statusLabel).Inc()
-	metrics.RequestDuration.WithLabelValues(h.provider, model).Observe(duration)
-
-	span.SetAttributes(
-		attribute.Int("http.status_code", resp.StatusCode),
-		attribute.Float64("llm.duration_seconds", duration),
-	)
-
-	if resp.StatusCode >= 400 {
-		metrics.ErrorsTotal.WithLabelValues(h.provider, model, "http_"+statusLabel).Inc()
-		span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", resp.StatusCode))
-	}
-
-	// Parse usage from response
-	inputTokens, outputTokens := extractUsage(h.provider, respBytes)
-	if inputTokens > 0 || outputTokens > 0 {
-		metrics.TokensTotal.WithLabelValues(h.provider, model, "input").Add(float64(inputTokens))
-		metrics.TokensTotal.WithLabelValues(h.provider, model, "output").Add(float64(outputTokens))
-
-		estimatedCost := cost.Calculate(model, inputTokens, outputTokens)
-		metrics.CostDollarsTotal.WithLabelValues(h.provider, model).Add(estimatedCost)
-
-		span.SetAttributes(
-			attribute.Int("llm.input_tokens", inputTokens),
-			attribute.Int("llm.output_tokens", outputTokens),
-			attribute.Float64("llm.cost_usd", estimatedCost),
-		)
-
-		log.Printf("provider=%s model=%s status=%d duration=%.2fs input_tokens=%d output_tokens=%d cost=$%.6f",
-			h.provider, model, resp.StatusCode, duration, inputTokens, outputTokens, estimatedCost)
-	}
-
-	// Forward response to client
 	for k, vals := range resp.Header {
 		for _, v := range vals {
 			w.Header().Add(k, v)
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = w.Write(respBytes)
+
+	if streaming && resp.StatusCode == http.StatusOK {
+		h.serveStream(w, resp.Body, model, start, span)
+	} else {
+		h.serveBuffered(w, resp.Body, resp.StatusCode, model, start, span)
+	}
+}
+
+// serveStream pipes SSE chunks to the client while capturing them to extract usage.
+func (h *Handler) serveStream(w http.ResponseWriter, body io.Reader, model string, start time.Time, span trace.Span) {
+	flusher, canFlush := w.(http.Flusher)
+
+	var captured bytes.Buffer
+	scanner := bufio.NewScanner(io.TeeReader(body, &captured))
+	scanner.Buffer(make([]byte, 64*1024), 64*1024)
+
+	for scanner.Scan() {
+		w.Write(scanner.Bytes())
+		w.Write([]byte("\n"))
+		if canFlush {
+			flusher.Flush()
+		}
+	}
+	// SSE spec: events are separated by blank lines
+	w.Write([]byte("\n"))
+	if canFlush {
+		flusher.Flush()
+	}
+
+	duration := time.Since(start).Seconds()
+	metrics.RequestTotal.WithLabelValues(h.provider, model, "200").Inc()
+	metrics.RequestDuration.WithLabelValues(h.provider, model).Observe(duration)
+
+	inputTokens, outputTokens := extractStreamUsage(h.provider, captured.Bytes())
+	h.recordUsage(model, inputTokens, outputTokens, duration, http.StatusOK, span)
+}
+
+// serveBuffered reads the full response body, records metrics, then writes to client.
+func (h *Handler) serveBuffered(w http.ResponseWriter, body io.Reader, statusCode int, model string, start time.Time, span trace.Span) {
+	respBytes, err := io.ReadAll(body)
+	duration := time.Since(start).Seconds()
+
+	statusLabel := strconv.Itoa(statusCode)
+	metrics.RequestTotal.WithLabelValues(h.provider, model, statusLabel).Inc()
+	metrics.RequestDuration.WithLabelValues(h.provider, model).Observe(duration)
+
+	if err != nil {
+		metrics.ErrorsTotal.WithLabelValues(h.provider, model, "response_read").Inc()
+		return
+	}
+
+	if statusCode >= 400 {
+		metrics.ErrorsTotal.WithLabelValues(h.provider, model, "http_"+statusLabel).Inc()
+		span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", statusCode))
+	}
+
+	inputTokens, outputTokens := extractUsage(h.provider, respBytes)
+	h.recordUsage(model, inputTokens, outputTokens, duration, statusCode, span)
+	w.Write(respBytes)
+}
+
+func (h *Handler) recordUsage(model string, inputTokens, outputTokens int, duration float64, statusCode int, span trace.Span) {
+	if inputTokens == 0 && outputTokens == 0 {
+		return
+	}
+	metrics.TokensTotal.WithLabelValues(h.provider, model, "input").Add(float64(inputTokens))
+	metrics.TokensTotal.WithLabelValues(h.provider, model, "output").Add(float64(outputTokens))
+
+	estimatedCost := cost.Calculate(model, inputTokens, outputTokens)
+	metrics.CostDollarsTotal.WithLabelValues(h.provider, model).Add(estimatedCost)
+
+	span.SetAttributes(
+		attribute.Int("llm.input_tokens", inputTokens),
+		attribute.Int("llm.output_tokens", outputTokens),
+		attribute.Float64("llm.cost_usd", estimatedCost),
+		attribute.Float64("llm.duration_seconds", duration),
+		attribute.Int("http.status_code", statusCode),
+	)
+
+	log.Printf("provider=%s model=%s status=%d duration=%.2fs input_tokens=%d output_tokens=%d cost=$%.6f",
+		h.provider, model, statusCode, duration, inputTokens, outputTokens, estimatedCost)
+}
+
+func isStreaming(body []byte) bool {
+	var payload struct {
+		Stream bool `json:"stream"`
+	}
+	return json.Unmarshal(body, &payload) == nil && payload.Stream
+}
+
+// injectOpenAIStreamOptions adds stream_options.include_usage so the final
+// chunk carries token counts even in streaming mode.
+func injectOpenAIStreamOptions(body []byte) []byte {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
+	}
+	m["stream_options"] = json.RawMessage(`{"include_usage":true}`)
+	result, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return result
+}
+
+// extractStreamUsage scans SSE lines and pulls token counts from provider-specific events.
+func extractStreamUsage(provider string, data []byte) (inputTokens, outputTokens int) {
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := line[len("data: "):]
+		if payload == "[DONE]" {
+			continue
+		}
+
+		switch provider {
+		case "anthropic":
+			inputTokens, outputTokens = parseAnthropicSSELine(payload, inputTokens, outputTokens)
+		case "openai":
+			inputTokens, outputTokens = parseOpenAISSELine(payload, inputTokens, outputTokens)
+		}
+	}
+	return
+}
+
+func parseAnthropicSSELine(payload string, in, out int) (int, int) {
+	// message_start carries input_tokens; message_delta carries output_tokens.
+	var event struct {
+		Type    string `json:"type"`
+		Message struct {
+			Usage struct {
+				InputTokens int `json:"input_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+		Usage struct {
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return in, out
+	}
+	switch event.Type {
+	case "message_start":
+		in = event.Message.Usage.InputTokens
+	case "message_delta":
+		out = event.Usage.OutputTokens
+	}
+	return in, out
+}
+
+func parseOpenAISSELine(payload string, in, out int) (int, int) {
+	// With stream_options.include_usage, the last chunk has a non-null usage field.
+	var chunk struct {
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal([]byte(payload), &chunk); err != nil || chunk.Usage == nil {
+		return in, out
+	}
+	return chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens
 }
 
 func extractModel(body []byte) string {
@@ -156,7 +282,6 @@ func extractModel(body []byte) string {
 	return payload.Model
 }
 
-// extractUsage parses input/output token counts from provider response bodies.
 func extractUsage(provider string, body []byte) (int, int) {
 	switch provider {
 	case "anthropic":
